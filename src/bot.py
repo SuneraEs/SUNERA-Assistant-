@@ -26,7 +26,7 @@ from email.mime.multipart import MIMEMultipart
 
 from config import TELEGRAM_BOT_TOKEN, ADMIN_CHAT_ID, UI, LANGS, \
                    SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, LEADS_EMAILS, \
-                   get_gsheets_credentials_dict, GSHEET_NAME
+                   get_gsheets_credentials_dict, GSHEET_NAME, COMPANY_PHONE, WHATSAPP_PHONE, WEBSITE_URL
 
 # ---------- ЛОГИ ----------
 logging.basicConfig(
@@ -71,7 +71,7 @@ def sheet_append(row: List[str]):
 # ---------- EMAIL ----------
 def send_email(subject: str, body: str):
     if not (SMTP_HOST and SMTP_USER and SMTP_PASS and LEADS_EMAILS):
-        return  # email не настроен — пропускаем тихо
+        return
     try:
         msg = MIMEMultipart()
         msg["From"] = SMTP_USER
@@ -96,8 +96,9 @@ def t(lang: str, key: str, **fmt):
 def main_menu_kb(lang: str) -> ReplyKeyboardMarkup:
     cfg = UI.get(lang, UI["Русский"])
     btns = [
-        [KeyboardButton(cfg["services"]), KeyboardButton(cfg["calc"])],
-        [KeyboardButton(cfg["consult"]), KeyboardButton(cfg["faq"])]
+        [KeyboardButton(cfg["about_us"]), KeyboardButton(cfg["services"])],
+        [KeyboardButton(cfg["consult"]), KeyboardButton(cfg["website"])],
+        [KeyboardButton(cfg["call_us"]), KeyboardButton(cfg["whatsapp"])]
     ]
     return ReplyKeyboardMarkup(btns, resize_keyboard=True)
 
@@ -105,24 +106,10 @@ def back_kb(lang: str) -> ReplyKeyboardMarkup:
     cfg = UI.get(lang, UI["Русский"])
     return ReplyKeyboardMarkup([[KeyboardButton(cfg["back"])]], resize_keyboard=True)
 
-def services_inline(lang: str) -> InlineKeyboardMarkup:
-    cfg = UI.get(lang, UI["Русский"])
-    rows = [[InlineKeyboardButton(text=txt, callback_data=f"svc_{i}")]
-            for i, txt in enumerate(cfg["services_list"], start=1)]
-    return InlineKeyboardMarkup(rows)
-
-def faq_inline(lang: str) -> InlineKeyboardMarkup:
-    cfg = UI.get(lang, UI["Русский"])
-    rows = [[InlineKeyboardButton(text=q, callback_data=f"faq_{i}")]
-            for i, (q, _a) in enumerate(cfg["faq_items"], start=1)]
-    return InlineKeyboardMarkup(rows)
-
 # ---------- ОБРАБОТЧИКИ ----------
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
-    # Сброс состояния и язык по умолчанию не выбран
     USER[chat_id] = {"lang": None, "state": None}
-    # Показ выбора языка
     kb = ReplyKeyboardMarkup([[KeyboardButton(x)] for x in LANGS], resize_keyboard=True)
     await update.message.reply_text(UI["Русский"]["welcome"], reply_markup=kb)
 
@@ -145,16 +132,11 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     text = (update.message.text or "").strip()
 
-    # 1) Выбор языка?
     if text in LANGS:
         USER[chat_id] = {"lang": text, "state": None}
-        await update.message.reply_text(
-            t(text, "menu"),
-            reply_markup=main_menu_kb(text)
-        )
+        await update.message.reply_text(t(text, "menu"), reply_markup=main_menu_kb(text))
         return
 
-    # 2) Если язык ещё не выбран — просим выбрать
     if chat_id not in USER or USER[chat_id].get("lang") is None:
         kb = ReplyKeyboardMarkup([[KeyboardButton(x)] for x in LANGS], resize_keyboard=True)
         await update.message.reply_text(UI["Русский"]["welcome"], reply_markup=kb)
@@ -162,31 +144,26 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     lang = USER[chat_id]["lang"]
     state = USER[chat_id].get("state")
-
     cfg = UI[lang]
-    # 3) Кнопки главного меню
+
     if text == cfg["back"]:
         USER[chat_id]["state"] = None
         await update.message.reply_text(t(lang, "menu"), reply_markup=main_menu_kb(lang))
         return
 
+    if text == cfg["about_us"]:
+        if cfg["about_us_photo"]:
+            await update.message.reply_photo(
+                photo=cfg["about_us_photo"],
+                caption=cfg["about_us_text"],
+                reply_markup=main_menu_kb(lang)
+            )
+        else:
+            await update.message.reply_text(cfg["about_us_text"], reply_markup=main_menu_kb(lang))
+        return
+
     if text == cfg["services"]:
         await update.message.reply_text(cfg["services_info"], reply_markup=main_menu_kb(lang))
-        await update.message.reply_markup  # просто сохраняем клавиатуру
-        await update.message.reply_text("—", reply_markup=None)
-        await update.message.reply_text(cfg["services_info"], reply_markup=None)
-        await update.message.reply_text(cfg["services_info"], reply_markup=None)
-        # показываем inline-кнопки
-        await update.message.reply_text(cfg["services_info"], reply_markup=services_inline(lang))
-        return
-
-    if text == cfg["faq"]:
-        await update.message.reply_text(cfg["faq_title"], reply_markup=faq_inline(lang))
-        return
-
-    if text == cfg["calc"]:
-        USER[chat_id]["state"] = "calc"
-        await update.message.reply_text(cfg["calc_prompt"], reply_markup=back_kb(lang))
         return
 
     if text == cfg["consult"]:
@@ -194,35 +171,19 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(cfg["consult_prompt"], reply_markup=back_kb(lang))
         return
 
-    # 4) Состояния
-    if state == "calc":
-        try:
-            cons = float(text.replace(",", "."))
-            # Модель: kW = (kWh/month)/30 / (PSH 4.5) / PR(0.8)
-            kw = round(cons / 30.0 / 4.5 / 0.8, 2)
-            await update.message.reply_text(
-                t(lang, "calc_result", kw=kw, cons=cons),
-                reply_markup=main_menu_kb(lang)
-            )
-            USER[chat_id]["state"] = None
-            # Логи в админ/таблицу
-            uname = f"@{update.effective_user.username}" if update.effective_user and update.effective_user.username else ""
-            ts = datetime.datetime.utcnow().isoformat()
-            sheet_append([ts, uname, str(chat_id), "Power_Calc", f"{cons} kWh/mo -> {kw} kW"])
-            if ADMIN_CHAT_ID:
-                try:
-                    await context.bot.send_message(
-                        ADMIN_CHAT_ID,
-                        f"🔢 Расчёт мощности от {uname or chat_id}: {cons} кВт·ч/мес → {kw} кВт"
-                    )
-                except Exception:
-                    pass
-        except ValueError:
-            await update.message.reply_text(cfg["calc_error"], reply_markup=back_kb(lang))
+    if text == cfg["website"]:
+        await update.message.reply_text(t(lang, "website_text", url=WEBSITE_URL), reply_markup=main_menu_kb(lang))
+        return
+
+    if text == cfg["call_us"]:
+        await update.message.reply_text(t(lang, "call_us_text", phone=COMPANY_PHONE), reply_markup=main_menu_kb(lang))
+        return
+
+    if text == cfg["whatsapp"]:
+        await update.message.reply_text(t(lang, "whatsapp_text", phone=WHATSAPP_PHONE), reply_markup=main_menu_kb(lang))
         return
 
     if state == "consult":
-        # Пытаемся вытащить телефон
         phone = ""
         try:
             for token in text.split():
@@ -240,46 +201,19 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(UI[lang]["consult_ok"], reply_markup=main_menu_kb(lang))
         USER[chat_id]["state"] = None
 
-        # Шлём админу
         if ADMIN_CHAT_ID:
             try:
                 await context.bot.send_message(ADMIN_CHAT_ID, f"📝 {lead_text}")
             except Exception:
                 pass
 
-        # Пишем в таблицу
         uname = f"@{update.effective_user.username}" if update.effective_user and update.effective_user.username else ""
         ts = datetime.datetime.utcnow().isoformat()
         sheet_append([ts, uname, str(chat_id), "Consult", text])
-
-        # Отправляем email (если настроен)
         send_email("Sunera: новая заявка", lead_text)
         return
 
-    # 5) Неизвестное сообщение
     await update.message.reply_text(cfg["unknown"], reply_markup=main_menu_kb(lang))
-
-async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.callback_query:
-        return
-    chat_id = update.effective_chat.id
-    lang = USER.get(chat_id, {}).get("lang") or "Русский"
-    data = update.callback_query.data
-
-    if data.startswith("svc_"):
-        idx = int(data.split("_")[1]) - 1
-        txt = UI[lang]["services_list"][idx] if 0 <= idx < len(UI[lang]["services_list"]) else "—"
-        await update.callback_query.answer()
-        await update.callback_query.message.reply_text(f"ℹ️ {txt}: подробности и предложение индивидуально после консультации.")
-        return
-
-    if data.startswith("faq_"):
-        idx = int(data.split("_")[1]) - 1
-        qa = UI[lang]["faq_items"][idx] if 0 <= idx < len(UI[lang]["faq_items"]) else ("—", "—")
-        q, a = qa
-        await update.callback_query.answer()
-        await update.callback_query.message.reply_text(f"❓ {q}\n\n💡 {a}")
-        return
 
 # ---------- ЗАПУСК: Telegram + HTTP-сервер (для Render) ----------
 async def run_http_server():
@@ -300,22 +234,17 @@ async def main():
         return
 
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
-
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("id", cmd_id))
     app.add_handler(CommandHandler("admin", cmd_admin))
-    app.add_handler(CallbackQueryHandler(on_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
 
-    # Запускаем одновременно Telegram-бот и HTTP-сервер для Render
     await app.initialize()
     await app.start()
     log.info("Telegram bot started")
 
-    # HTTP сервер — чтобы Render Web Service считал, что сервис жив
     await run_http_server()
 
-    # Ждём бесконечно
     try:
         await asyncio.Event().wait()
     finally:
