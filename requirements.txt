@@ -1,0 +1,6 @@
+python-telegram-bot==20.6
+aiohttp==3.9.5
+gspread==6.1.2
+oauth2client==4.1.3
+phonenumbers==8.13.40
+pytz==2024.1
