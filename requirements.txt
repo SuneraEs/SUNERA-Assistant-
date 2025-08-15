@@ -1,1 +1,7 @@
-python-telegram-bot==20.3
+python-telegram-bot==20.6
+aiohttp
+gspread
+oauth2client
+phonenumbers
+pytz
+setuptools
