@@ -26,7 +26,7 @@ from email.mime.multipart import MIMEMultipart
 
 from config import TELEGRAM_BOT_TOKEN, ADMIN_CHAT_ID, UI, LANGS, \
                    SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, LEADS_EMAILS, \
-                   get_gsheets_credentials_dict, GSHEET_NAME, COMPANY_PHONE, WHATSAPP_PHONE, WEBSITE_URL
+                   get_gsheets_credentials_dict, GSHEET_NAME, COMPANY_PHONE, WHATSAPP_PHONE, WEBSITE_URL, ABOUT_US_PHOTO_URL
 
 # ---------- ЛОГИ ----------
 logging.basicConfig(
@@ -36,7 +36,6 @@ logging.basicConfig(
 log = logging.getLogger("sunera-bot")
 
 # ---------- ПАМЯТЬ О ПОЛЬЗОВАТЕЛЕ ----------
-# Храним язык и состояние. Это в памяти (RAM). Для продакшна можно вынести в БД.
 USER: Dict[int, Dict[str, Any]] = {}
 
 # ---------- GOOGLE SHEETS ----------
@@ -51,7 +50,6 @@ def get_sheet():
         client = gspread.authorize(creds)
         sh = client.open(GSHEET_NAME)
         ws = sh.sheet1
-        # Заголовки при первом запуске
         if not ws.row_values(1):
             ws.append_row(["Timestamp", "Username", "ChatID", "Type", "Data"])
         return ws
@@ -106,7 +104,6 @@ def back_kb(lang: str) -> ReplyKeyboardMarkup:
     cfg = UI.get(lang, UI["Русский"])
     return ReplyKeyboardMarkup([[KeyboardButton(cfg["back"])]], resize_keyboard=True)
 
-# ---------- ОБРАБОТЧИКИ ----------
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     USER[chat_id] = {"lang": None, "state": None}
