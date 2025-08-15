@@ -1,158 +1,125 @@
 import os
 import json
 
-# === ОБЯЗАТЕЛЬНО: Храним секреты в переменных окружения (на Render) ===
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
-ADMIN_CHAT_ID = int(os.getenv("ADMIN_CHAT_ID", "0").strip() or 0)
+# === ОБЯЗАТЕЛЬНО: Храним секреты в переменных окружения ===
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+ADMIN_CHAT_ID = int(os.getenv("ADMIN_CHAT_ID", "0"))
 
-# EMAIL (опционально — если хочешь получать письма с лидами)
-SMTP_HOST = os.getenv("SMTP_HOST", "").strip()         # напр. smtp.gmail.com
-SMTP_PORT = int(os.getenv("SMTP_PORT", "587").strip() or 587)
-SMTP_USER = os.getenv("SMTP_USER", "").strip()
-SMTP_PASS = os.getenv("SMTP_PASS", "").strip()
-LEADS_EMAILS = [e.strip() for e in os.getenv("LEADS_EMAILS", "").split(",") if e.strip()]
+# === EMAIL (опционально - если хочешь слать email) ===
+SMTP_HOST = os.getenv("SMTP_HOST")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "0"))
+SMTP_USER = os.getenv("SMTP_USER")
+SMTP_PASS = os.getenv("SMTP_PASS")
+LEADS_EMAILS = [e.strip() for e in os.getenv("LEADS_EMAILS", "").split(",") if e]
 
-# Google Sheets (опционально)
-GSHEETS_JSON_RAW = os.getenv("GSHEETS_JSON", "").strip()  # сюда вставляется ПОЛНЫЙ JSON сервис-аккаунта
-GSHEET_NAME = os.getenv("GSHEET_NAME", "Sunera Leads").strip()
+# === Google Sheets (опционально) ===
+GSHEETS_JSON_RAW = os.getenv("GSHEETS_JSON_RAW")
+GSHEET_NAME = os.getenv("GSHEET_NAME")
 
 def get_gsheets_credentials_dict():
-    """Возвращает dict из GSHEETS_JSON_RAW или None, если не задано."""
     if not GSHEETS_JSON_RAW:
         return None
     try:
         return json.loads(GSHEETS_JSON_RAW)
-    except Exception:
+    except json.JSONDecodeError:
         return None
 
-# Языки интерфейса
-LANGS = ["Русский", "Español", "English", "Polski", "Deutsch"]
+# === Новые переменные для сайта, фото и контактов ===
+WEBSITE_URL = "https://example.com"  # Временно, так как сайта пока нет
+COMPANY_PHONE = "+48507716338"  # Заменено на ваш номер
+WHATSAPP_PHONE = "+48507716338" # Заменено на ваш номер
+ABOUT_US_PHOTO_URL = "https://upload.wikimedia.org/wikipedia/commons/e/e9/Solar_panels_on_a_house_roof_in_Germany_-_2010.jpg" # Временное фото
 
-# Текстовые шаблоны по языкам
+# === UI (пользовательский интерфейс) и языки ===
 UI = {
     "Русский": {
-        "welcome": "Выберите язык / Elige idioma / Choose language / Wählen Sie Sprache / Wybierz język:",
-        "menu": "Меню:",
-        "services": "☀️ Наши услуги",
-        "calc": "💰 Расчёт мощности",
-        "consult": "📞 Консультация",
-        "faq": "🛠️ FAQ",
-        "back": "⬅️ Назад в меню",
-        "services_info": "📋 Мы устанавливаем автономные, сетевые и гибридные солнечные системы.",
-        "services_list": ["Автономные системы", "Сетевые системы", "Гибридные системы"],
-        "calc_prompt": "Введите ваше потребление в кВт·ч в месяц (целое или дробное число):",
-        "calc_result": "Оценочно потребуется система ~ {kw} кВт (расчёт из {cons} кВт·ч/мес, 4.5 солн.ч/день, КПД 0.8).",
-        "calc_error": "Пожалуйста, введите корректное число, например 450 или 612.5",
-        "consult_prompt": "Введите ваше имя и номер телефона (и, по желанию, город/страну):",
-        "consult_ok": "✅ Заявка принята! Мы скоро свяжемся с вами.",
-        "faq_title": "Частые вопросы:",
-        "faq_items": [
-            ("Сколько длится установка?", "Обычно 1–3 дня, в зависимости от объекта."),
-            ("Какая гарантия?", "На панели до 25 лет. На инвертор — по паспорту производителя."),
-            ("Есть ли рассрочка/кредит?", "Да, возможны партнёрские программы финансирования.")
-        ],
-        "unknown": "Не понял команду. Пожалуйста, воспользуйтесь кнопками ниже.",
-        "admin_status": "Статус: бот работает.\nGoogle Sheets: {sheets}\nКэш пользователей: {users_cnt}",
-        "your_id": "Ваш chat_id: {cid}"
-    },
-    "Español": {
-        "welcome": "Elige idioma / Choose language / Wählen Sie Sprache / Wybierz język / Выберите язык:",
-        "menu": "Menú:",
-        "services": "☀️ Nuestros servicios",
-        "calc": "💰 Cálculo de potencia",
-        "consult": "📞 Consulta",
-        "faq": "🛠️ FAQ",
-        "back": "⬅️ Volver al menú",
-        "services_info": "📋 Instalamos sistemas solares autónomos, conectados a red e híbridos.",
-        "services_list": ["Sistemas autónomos", "Sistemas conectados a red", "Sistemas híbridos"],
-        "calc_prompt": "Indica tu consumo mensual en kWh:",
-        "calc_result": "Necesitas ~ {kw} kW (cálculo desde {cons} kWh/mes, 4.5 h sol/día, PR 0.8).",
-        "calc_error": "Por favor, escribe un número válido, p. ej. 450 o 612.5",
-        "consult_prompt": "Escribe tu nombre y teléfono (y ciudad/país opcional):",
-        "consult_ok": "✅ ¡Solicitud recibida! Te contactaremos pronto.",
-        "faq_title": "Preguntas frecuentes:",
-        "faq_items": [
-            ("¿Cuánto tarda la instalación?", "Normalmente 1–3 días."),
-            ("¿Garantía?", "Paneles hasta 25 años; inversor según fabricante."),
-            ("¿Financiación?", "Sí, trabajamos con bancos y planes de pago.")
-        ],
-        "unknown": "No entendí. Usa los botones de abajo, por favor.",
-        "admin_status": "Estado: bot activo.\nGoogle Sheets: {sheets}\nUsuarios en caché: {users_cnt}",
-        "your_id": "Tu chat_id: {cid}"
+        "welcome": "Привет! Я бот-помощник SUNERA. Пожалуйста, выберите язык:",
+        "menu": "Выберите, что вас интересует:",
+        "about_us": "О компании",
+        "services": "Услуги",
+        "consult": "Оставить заявку",
+        "website": "Сайт",
+        "call_us": "Позвонить нам",
+        "whatsapp": "WhatsApp",
+        "back": "⬅️ Назад",
+        "about_us_text": "Мы - компания SUNERA. Занимаемся установкой солнечных электростанций, чтобы вы могли экономить на счетах за электроэнергию и делать свой вклад в защиту экологии.",
+        "about_us_photo": ABOUT_US_PHOTO_URL,
+        "services_info": "Мы предлагаем полный спектр услуг...",
+        "consult_prompt": "Пожалуйста, оставьте ваш телефон или другой контакт, и наш менеджер свяжется с вами:",
+        "consult_ok": "Спасибо! Мы скоро свяжемся с вами.",
+        "website_text": "Наш сайт: {url}",
+        "call_us_text": "Позвонить нам: {phone}",
+        "whatsapp_text": "Наш WhatsApp: {phone}",
+        "unknown": "Извините, я не понял. Пожалуйста, выберите опцию из меню.",
+        "your_id": "Ваш Chat ID: `{cid}`",
+        "admin_status": "📊 Статус бота:\nGoogle Sheets: {sheets}\nПользователей: {users_cnt}"
     },
     "English": {
-        "welcome": "Choose language / Elige idioma / Wählen Sie Sprache / Wybierz język / Выберите язык:",
-        "menu": "Menu:",
-        "services": "☀️ Our Services",
-        "calc": "💰 Power Sizing",
-        "consult": "📞 Consultation",
-        "faq": "🛠️ FAQ",
-        "back": "⬅️ Back to menu",
-        "services_info": "📋 We install off-grid, grid-tied and hybrid solar systems.",
-        "services_list": ["Off-grid systems", "Grid-tied systems", "Hybrid systems"],
-        "calc_prompt": "Enter your monthly consumption in kWh:",
-        "calc_result": "You need ~ {kw} kW (from {cons} kWh/month, 4.5 sun-hours/day, PR 0.8).",
-        "calc_error": "Please enter a valid number, e.g. 450 or 612.5",
-        "consult_prompt": "Enter your name and phone (optionally city/country):",
-        "consult_ok": "✅ Got it! We will contact you shortly.",
-        "faq_title": "FAQ:",
-        "faq_items": [
-            ("How long is installation?", "Usually 1–3 days."),
-            ("Warranty?", "Panels up to 25 years; inverter per manufacturer."),
-            ("Financing?", "Yes, partner banks and payment plans available.")
-        ],
-        "unknown": "I didn't get that. Use the buttons below, please.",
-        "admin_status": "Status: running.\nGoogle Sheets: {sheets}\nUsers cached: {users_cnt}",
-        "your_id": "Your chat_id: {cid}"
+        "welcome": "Hello! I am SUNERA assistant bot. Please select your language:",
+        "menu": "Select what you are interested in:",
+        "about_us": "About Us",
+        "services": "Services",
+        "consult": "Leave a Request",
+        "website": "Website",
+        "call_us": "Call Us",
+        "whatsapp": "WhatsApp",
+        "back": "⬅️ Back",
+        "about_us_text": "We are SUNERA, a company that specializes in installing solar power plants to help you save on electricity bills and protect the environment.",
+        "about_us_photo": ABOUT_US_PHOTO_URL,
+        "services_info": "We offer a full range of services...",
+        "consult_prompt": "Please leave your phone number or other contact, and our manager will get in touch with you:",
+        "consult_ok": "Thank you! We will contact you shortly.",
+        "website_text": "Our website: {url}",
+        "call_us_text": "Call us: {phone}",
+        "whatsapp_text": "Our WhatsApp: {phone}",
+        "unknown": "Sorry, I didn't understand. Please select an option from the menu.",
+        "your_id": "Your Chat ID: `{cid}`",
+        "admin_status": "📊 Bot Status:\nGoogle Sheets: {sheets}\nUsers: {users_cnt}"
+    },
+    "Español": {
+        "welcome": "¡Hola! Soy el bot asistente de SUNERA. Por favor, seleccione su idioma:",
+        "menu": "Seleccione lo que le interesa:",
+        "about_us": "Acerca de Nosotros",
+        "services": "Servicios",
+        "consult": "Dejar una Solicitud",
+        "website": "Sitio Web",
+        "call_us": "Llámanos",
+        "whatsapp": "WhatsApp",
+        "back": "⬅️ Volver",
+        "about_us_text": "Somos SUNERA, una empresa especializada en la instalación de plantas de energía solar para ayudarte a ahorrar en facturas de electricidad y proteger el medio ambiente.",
+        "about_us_photo": ABOUT_US_PHOTO_URL,
+        "services_info": "Ofrecemos una gama completa de servicios...",
+        "consult_prompt": "Por favor, deje su número de teléfono u otro contacto, y nuestro gerente se pondrá en contacto con usted:",
+        "consult_ok": "¡Gracias! Nos pondremos en contacto con usted en breve.",
+        "website_text": "Nuestro sitio web: {url}",
+        "call_us_text": "Llámanos: {phone}",
+        "whatsapp_text": "Nuestro WhatsApp: {phone}",
+        "unknown": "Lo siento, no entendí. Por favor, seleccione una opción del menú.",
+        "your_id": "Tu Chat ID: `{cid}`",
+        "admin_status": "📊 Estado del Bot:\nArkusze Google: {sheets}\nUżytros: {users_cnt}"
     },
     "Polski": {
-        "welcome": "Wybierz język / Choose language / Elige idioma / Wählen Sie Sprache / Выберите язык:",
-        "menu": "Menu:",
-        "services": "☀️ Nasze usługi",
-        "calc": "💰 Dobór mocy",
-        "consult": "📞 Konsultacja",
-        "faq": "🛠️ FAQ",
-        "back": "⬅️ Powrót do menu",
-        "services_info": "📋 Montujemy systemy off-grid, on-grid i hybrydowe.",
-        "services_list": ["Systemy autonomiczne", "Systemy sieciowe", "Systemy hybrydowe"],
-        "calc_prompt": "Podaj zużycie miesięczne w kWh:",
-        "calc_result": "Potrzebujesz ~ {kw} kW (na podstawie {cons} kWh/mies., 4.5 h słońca/dzień, PR 0.8).",
-        "calc_error": "Wpisz poprawną liczbę, np. 450 lub 612.5",
-        "consult_prompt": "Podaj imię i telefon (opcjonalnie miasto/kraj):",
-        "consult_ok": "✅ Zgłoszenie przyjęte! Skontaktujemy się wkrótce.",
-        "faq_title": "Najczęstsze pytania:",
-        "faq_items": [
-            ("Jak długo trwa montaż?", "Zwykle 1–3 dni."),
-            ("Gwarancja?", "Panele do 25 lat; inwerter wg producenta."),
-            ("Finansowanie?", "Tak, dostępne programy ratalne.")
-        ],
-        "unknown": "Nie zrozumiałem. Użyj proszę przycisków poniżej.",
-        "admin_status": "Status: działa.\nGoogle Sheets: {sheets}\nUżytkownicy w pamięci: {users_cnt}",
-        "your_id": "Twój chat_id: {cid}"
-    },
-    "Deutsch": {
-        "welcome": "Wählen Sie Sprache / Choose language / Elige idioma / Wybierz język / Выберите язык:",
-        "menu": "Menü:",
-        "services": "☀️ Unsere Leistungen",
-        "calc": "💰 Leistungsberechnung",
-        "consult": "📞 Beratung",
-        "faq": "🛠️ FAQ",
-        "back": "⬅️ Zurück zum Menü",
-        "services_info": "📋 Wir installieren Off-Grid, On-Grid und Hybrid-Solarsysteme.",
-        "services_list": ["Autonome Systeme", "Netzgekoppelte Systeme", "Hybridsysteme"],
-        "calc_prompt": "Geben Sie Ihren Monatsverbrauch in kWh ein:",
-        "calc_result": "Sie benötigen ~ {kw} kW (aus {cons} kWh/Monat, 4.5 Sonnenstunden/Tag, PR 0.8).",
-        "calc_error": "Bitte gültige Zahl eingeben, z. B. 450 oder 612.5",
-        "consult_prompt": "Geben Sie Name und Telefonnummer ein (optional Stadt/Land):",
-        "consult_ok": "✅ Anfrage erhalten! Wir kontaktieren Sie bald.",
-        "faq_title": "Häufige Fragen:",
-        "faq_items": [
-            ("Wie lange dauert die Installation?", "Meist 1–3 Tage."),
-            ("Garantie?", "Module bis 25 Jahre; Wechselrichter je Hersteller."),
-            ("Finanzierung?", "Ja, Partnerbanken und Zahlungspläne.")
-        ],
-        "unknown": "Unklar. Bitte nutzen Sie die Tasten unten.",
-        "admin_status": "Status: aktiv.\nGoogle Sheets: {sheets}\nBenutzer im Cache: {users_cnt}",
-        "your_id": "Ihre chat_id: {cid}"
+        "welcome": "Cześć! Jestem asystentem bota SUNERA. Proszę wybrać język:",
+        "menu": "Wybierz, co Cię interesuje:",
+        "about_us": "O firmie",
+        "services": "Usługi",
+        "consult": "Zostaw Zgłoszenie",
+        "website": "Strona internetowa",
+        "call_us": "Zadzwoń do nas",
+        "whatsapp": "WhatsApp",
+        "back": "⬅️ Wróć",
+        "about_us_text": "Jesteśmy SUNERA, firmą specjalizującą się w instalacji elektrowni słonecznych, aby pomóc Ci oszczędzać na rachunkach za prąd i chronić środowisko.",
+        "about_us_photo": ABOUT_US_PHOTO_URL,
+        "services_info": "Oferujemy pełen zakres usług...",
+        "consult_prompt": "Proszę zostawić swój numer telefonu lub inny kontakt, a nasz menedżer skontaktuje się z Tobą:",
+        "consult_ok": "Dziękuję! Wkrótce się z Tobą skontaktujemy.",
+        "website_text": "Nasza strona internetowa: {url}",
+        "call_us_text": "Zadzwoń do nas: {phone}",
+        "whatsapp_text": "Nasz WhatsApp: {phone}",
+        "unknown": "Przepraszam, nie zrozumiałem. Proszę wybrać opcję z menu.",
+        "your_id": "Twój Chat ID: `{cid}`",
+        "admin_status": "📊 Status Bota:\nArkusze Google: {sheets}\nUżytkownicy: {users_cnt}"
     }
 }
+
+LANGS = list(UI.keys())
