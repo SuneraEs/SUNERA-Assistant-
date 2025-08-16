@@ -5,3 +5,4 @@ google-auth
 phonenumbers
 pytz
 setuptools>=60.0.0
+huggingface_hub
