@@ -1,13 +1,10 @@
+
+
 import asyncio
 import logging
 import datetime
 import phonenumbers
-from typing import Dict, Any, List, Optional
-
-from aiohttp import web
-from pytz import timezone
-
-
+from typing import Dict, Any, List
 
 from telegram import (
     Update,
@@ -17,20 +14,12 @@ from telegram import (
     KeyboardButton
 )
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
-
-
-
-
-
-
-
 import gspread
-
-
 from google.oauth2.service_account import Credentials
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from aiohttp import web
 
 from config import TELEGRAM_BOT_TOKEN, ADMIN_CHAT_ID, UI, LANGS, \
                    SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, LEADS_EMAILS, \
@@ -47,10 +36,6 @@ log = logging.getLogger("sunera-bot")
 USER: Dict[int, Dict[str, Any]] = {}
 
 # ---------- GOOGLE SHEETS ----------
-
-
-from google.oauth2.service_account import Credentials  # Добавьте этот импорт в начале файла
-
 def get_sheet():
     creds_dict = get_gsheets_credentials_dict()
     if not creds_dict:
@@ -68,9 +53,6 @@ def get_sheet():
     except Exception as e:
         log.error(f"Sheets error: {e}")
         return None
-
-
-
 
 SHEET = get_sheet()
 
@@ -265,4 +247,5 @@ if __name__ == "__main__":  # Исправлено на правильное и�
         asyncio.run(main())
     except (KeyboardInterrupt, SystemExit):
         log.info("Stopped.")
-        
+
+
