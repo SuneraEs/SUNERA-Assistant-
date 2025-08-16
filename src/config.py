@@ -1,3 +1,5 @@
+
+
 import os
 import json
 
@@ -26,9 +28,9 @@ def get_gsheets_credentials_dict():
 
 # === Новые переменные для сайта, фото и контактов ===
 WEBSITE_URL = "https://example.com"  # Временно, так как сайта пока нет
-COMPANY_PHONE = "+48507716338"  # Заменено на ваш номер
-WHATSAPP_PHONE = "+48507716338" # Заменено на ваш номер
-ABOUT_US_PHOTO_URL = "https://upload.wikimedia.org/wikipedia/commons/e/e9/Solar_panels_on_a_house_roof_in_Germany_-_2010.jpg" # Временное фото
+COMPANY_PHONE = "+48507716338"  # Замените на ваш номер
+WHATSAPP_PHONE = "+48507716338"  # Замените на ваш номер
+ABOUT_US_PHOTO_URL = "https://upload.wikimedia.org/wikipedia/commons/e/e9/Solar_panels_on_a_house_roof_in_Germany_-_2010.jpg"  # Временное фото
 
 # === UI (пользовательский интерфейс) и языки ===
 UI = {
@@ -51,7 +53,7 @@ UI = {
         "call_us_text": "Позвонить нам: {phone}",
         "whatsapp_text": "Наш WhatsApp: {phone}",
         "unknown": "Извините, я не понял. Пожалуйста, выберите опцию из меню.",
-        "your_id": "Ваш Chat ID: `{cid}`",
+        "your_id": "Ваш Chat ID: {cid}",
         "admin_status": "📊 Статус бота:\nGoogle Sheets: {sheets}\nПользователей: {users_cnt}"
     },
     "English": {
@@ -73,53 +75,18 @@ UI = {
         "call_us_text": "Call us: {phone}",
         "whatsapp_text": "Our WhatsApp: {phone}",
         "unknown": "Sorry, I didn't understand. Please select an option from the menu.",
-        "your_id": "Your Chat ID: `{cid}`",
+        "your_id": "Your Chat ID: {cid}",
         "admin_status": "📊 Bot Status:\nGoogle Sheets: {sheets}\nUsers: {users_cnt}"
     },
-    "Español": {
-        "welcome": "¡Hola! Soy el bot asistente de SUNERA. Por favor, seleccione su idioma:",
-        "menu": "Seleccione lo que le interesa:",
-        "about_us": "Acerca de Nosotros",
-        "services": "Servicios",
-        "consult": "Dejar una Solicitud",
-        "website": "Sitio Web",
-        "call_us": "Llámanos",
-        "whatsapp": "WhatsApp",
-        "back": "⬅️ Volver",
-        "about_us_text": "Somos SUNERA, una empresa especializada en la instalación de plantas de energía solar para ayudarte a ahorrar en facturas de electricidad y proteger el medio ambiente.",
-        "about_us_photo": ABOUT_US_PHOTO_URL,
-        "services_info": "Ofrecemos una gama completa de servicios...",
-        "consult_prompt": "Por favor, deje su número de teléfono u otro contacto, y nuestro gerente se pondrá en contacto con usted:",
-        "consult_ok": "¡Gracias! Nos pondremos en contacto con usted en breve.",
-        "website_text": "Nuestro sitio web: {url}",
-        "call_us_text": "Llámanos: {phone}",
-        "whatsapp_text": "Nuestro WhatsApp: {phone}",
-        "unknown": "Lo siento, no entendí. Por favor, seleccione una opción del menú.",
-        "your_id": "Tu Chat ID: `{cid}`",
-        "admin_status": "📊 Estado del Bot:\nArkusze Google: {sheets}\nUżytros: {users_cnt}"
-    },
-    "Polski": {
-        "welcome": "Cześć! Jestem asystentem bota SUNERA. Proszę wybrać język:",
-        "menu": "Wybierz, co Cię interesuje:",
-        "about_us": "O firmie",
-        "services": "Usługi",
-        "consult": "Zostaw Zgłoszenie",
-        "website": "Strona internetowa",
-        "call_us": "Zadzwoń do nas",
-        "whatsapp": "WhatsApp",
-        "back": "⬅️ Wróć",
-        "about_us_text": "Jesteśmy SUNERA, firmą specjalizującą się w instalacji elektrowni słonecznych, aby pomóc Ci oszczędzać na rachunkach za prąd i chronić środowisko.",
-        "about_us_photo": ABOUT_US_PHOTO_URL,
-        "services_info": "Oferujemy pełen zakres usług...",
-        "consult_prompt": "Proszę zostawić swój numer telefonu lub inny kontakt, a nasz menedżer skontaktuje się z Tobą:",
-        "consult_ok": "Dziękuję! Wkrótce się z Tobą skontaktujemy.",
-        "website_text": "Nasza strona internetowa: {url}",
-        "call_us_text": "Zadzwoń do nas: {phone}",
-        "whatsapp_text": "Nasz WhatsApp: {phone}",
-        "unknown": "Przepraszam, nie zrozumiałem. Proszę wybrać opcję z menu.",
-        "your_id": "Twój Chat ID: `{cid}`",
-        "admin_status": "📊 Status Bota:\nArkusze Google: {sheets}\nUżytkownicy: {users_cnt}"
-    }
+    # Дополнительные языки могут быть добавлены аналогично
 }
 
+# Проверка наличия обязательных переменных
+if TELEGRAM_BOT_TOKEN is None:
+    raise ValueError("TELEGRAM_BOT_TOKEN is not set in environment variables.")
+if not LEADS_EMAILS:
+    raise ValueError("LEADS_EMAILS must contain at least one email address.")
+
 LANGS = list(UI.keys())
+
+
