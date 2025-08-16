@@ -26,6 +26,23 @@ from config import (
     get_gsheets_credentials_dict, SPREADSHEET_ID, GSHEET_NAME,
     COMPANY_NAME, WEBSITE_URL, WHATSAPP_NUMBER, COMPANY_PHONE
 )
+# ====== AI INTEGRATION (Hugging Face) ======
+from huggingface_hub import InferenceClient
+
+# Получаем токен Hugging Face из переменных окружения
+HF_TOKEN = os.getenv("HF_TOKEN")
+if not HF_TOKEN:
+    log.warning("Hugging Face token not found. AI functionality will be disabled.")
+    HF_CLIENT = None
+else:
+    # Инициализируем клиента Hugging Face
+    model_name = "meta-llama/Meta-Llama-3-8B-Instruct"
+    try:
+        HF_CLIENT = InferenceClient(model=model_name, token=HF_TOKEN)
+        log.info(f"Hugging Face client initialized for model: {model_name}")
+    except Exception as e:
+        log.error(f"Failed to initialize Hugging Face client: {e}. AI functionality will be disabled.")
+        HF_CLIENT = None
 
 # ====== LOGGING ======
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(name)s | %(message)s")
@@ -94,6 +111,44 @@ def send_email(subject: str, body: str):
         log.info("Email sent.")
     except Exception as e:
         log.error(f"Email error: {e}")
+# ====== AI HANDLER ======
+async def ai_response_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Отправляет сообщение пользователя в AI-модель и отправляет ответ, 
+    если пользователь не находится в процессе заполнения формы.
+    """
+    chat_id = update.effective_chat.id
+    text = (update.message.text or "").strip()
+    
+    # Не отвечаем, если пользователь находится в FSM-состоянии
+    if USER.get(chat_id, {}).get("state") is not None:
+        return
+
+    # Не отвечаем, если не задан клиент AI
+    if not HF_CLIENT:
+        return
+        
+    lang = USER.get(chat_id, {}).get("lang") or "Русский"
+    
+    # Отправляем запрос в модель, показывая, что бот "печатает"
+    await context.bot.send_chat_action(chat_id, "typing")
+
+    try:
+        prompt = f"Ответь на русском языке на следующий вопрос: {text}"
+        
+        ai_text = HF_CLIENT.text_generation(
+            prompt=prompt,
+            max_new_tokens=500,
+            do_sample=True,
+            temperature=0.7
+        )
+        
+        await update.message.reply_text(ai_text, reply_to_message_id=update.message.message_id)
+        
+    except Exception as e:
+        log.error(f"Произошла ошибка при работе с AI: {e}")
+        await update.message.reply_text(t(lang, "unknown"), reply_to_message_id=update.message.message_id)
+
 
 # ====== UI HELPERS ======
 def t(lang: str, key: str, **fmt):
@@ -381,7 +436,12 @@ async def main():
     application.add_handler(CommandHandler("start", cmd_start))
     application.add_handler(CommandHandler("id", cmd_id))
     application.add_handler(CommandHandler("admin", cmd_admin))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
+    # Сначала пробуем обработать сообщение AI-обработчиком
+application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ai_response_handler))
+
+# Если AI-обработчик "пропустил" сообщение, оно будет обработано вашей основной FSM-логикой
+application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
+
 
     await application.initialize()
     await application.start()
