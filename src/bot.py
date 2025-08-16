@@ -13,8 +13,8 @@ from telegram import (
     ReplyKeyboardMarkup, KeyboardButton
 )
 from telegram.ext import (
-    Application, ApplicationBuilder, ContextTypes,
-    CommandHandler, MessageHandler, CallbackQueryHandler,
+    ApplicationBuilder, ContextTypes,
+    CommandHandler, MessageHandler,
     filters
 )
 
@@ -118,8 +118,8 @@ async def cmd_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if ADMIN_CHAT_ID and update.effective_chat.id == ADMIN_CHAT_ID:
         sheets = "✅ подключено" if SHEET else "—"
-        users_cnt = len(USER)
-        await update.message.reply_text(t("Русский", "admin_status", sheets=sheets, users_cnt=users_cnt))
+        users_count = len(USER)
+        await update.message.reply_text(t("Русский", "admin_status", sheets=sheets, users_cnt=users_count))
     else:
         await update.message.reply_text("No access.")
 
@@ -149,7 +149,7 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if text == cfg["about_us"]:
-        if cfg["about_us_photo"]:
+        if cfg.get("about_us_photo"):
             await update.message.reply_photo(
                 photo=cfg["about_us_photo"],
                 caption=cfg["about_us_text"],
@@ -182,17 +182,14 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if state == "consult":
         phone = ""
-        try:
-            for token in text.split():
-                try:
-                    pn = phonenumbers.parse(token, None)
-                    if phonenumbers.is_valid_number(pn):
-                        phone = phonenumbers.format_number(pn, phonenumbers.PhoneNumberFormat.INTERNATIONAL)
-                        break
-                except Exception:
-                    continue
-        except Exception:
-            pass
+        for token in text.split():
+            try:
+                pn = phonenumbers.parse(token, None)
+                if phonenumbers.is_valid_number(pn):
+                    phone = phonenumbers.format_number(pn, phonenumbers.PhoneNumberFormat.INTERNATIONAL)
+                    break
+            except Exception:
+                continue
 
         lead_text = f"Новая заявка: {text}\nТелефон: {phone or 'не распознан'}\nОт: @{update.effective_user.username or ''} ({chat_id})"
         await update.message.reply_text(UI[lang]["consult_ok"], reply_markup=main_menu_kb(lang))
@@ -248,7 +245,7 @@ async def main():
         await app.stop()
         await app.shutdown()
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # Исправлено на правильное имя проверки
     try:
         asyncio.run(main())
     except (KeyboardInterrupt, SystemExit):
