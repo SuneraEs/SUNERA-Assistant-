@@ -261,7 +261,3 @@ if __name__ == "__main__":  # Исправлено на правильное и�
         log.info("Stopped.")
         
 
-git commit -m "Заменил oauth2client на google-auth в функции get_sheet"
-
-
-
