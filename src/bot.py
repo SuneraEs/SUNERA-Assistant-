@@ -260,4 +260,3 @@ if __name__ == "__main__":  # Исправлено на правильное и�
     except (KeyboardInterrupt, SystemExit):
         log.info("Stopped.")
         
-
