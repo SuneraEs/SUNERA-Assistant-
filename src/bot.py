@@ -41,14 +41,18 @@ log = logging.getLogger("sunera-bot")
 USER: Dict[int, Dict[str, Any]] = {}
 
 # ---------- GOOGLE SHEETS ----------
+
+
+from google.oauth2.service_account import Credentials  # Добавьте этот импорт в начале файла
+
 def get_sheet():
     creds_dict = get_gsheets_credentials_dict()
     if not creds_dict:
         return None
     try:
-        scope = ["https://spreadsheets.google.com/feeds",
+        scope = ["https://spreadsheets.googleapis.com/auth/spreadsheets",
                  "https://www.googleapis.com/auth/drive"]
-        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+        creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
         client = gspread.authorize(creds)
         sh = client.open(GSHEET_NAME)
         ws = sh.sheet1
@@ -58,6 +62,9 @@ def get_sheet():
     except Exception as e:
         log.error(f"Sheets error: {e}")
         return None
+
+
+
 
 SHEET = get_sheet()
 
