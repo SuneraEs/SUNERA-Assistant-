@@ -1,7 +1,7 @@
 python-telegram-bot==20.8
 aiohttp
 gspread
-oauth2client
+google-auth
 phonenumbers
 pytz
 setuptools
