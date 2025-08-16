@@ -259,3 +259,9 @@ if __name__ == "__main__":  # Исправлено на правильное и�
         asyncio.run(main())
     except (KeyboardInterrupt, SystemExit):
         log.info("Stopped.")
+        
+
+git commit -m "Заменил oauth2client на google-auth в функции get_sheet"
+
+
+
