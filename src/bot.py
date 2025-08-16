@@ -12,10 +12,13 @@ from telegram import (
     InlineKeyboardMarkup, InlineKeyboardButton,
     ReplyKeyboardMarkup, KeyboardButton
 )
-from telegram.ext import (
-    ApplicationBuilder, ContextTypes,
-    CommandHandler, MessageHandler,
-    filters
+
+
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters
+import asyncio
+import logging
+
+
 )
 
 import gspread
