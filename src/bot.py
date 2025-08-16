@@ -431,7 +431,7 @@ async def main():
         log.error("No TELEGRAM_BOT_TOKEN!")
         return
 
-    application: Application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+application: Application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
 
     application.add_handler(CommandHandler("start", cmd_start))
     application.add_handler(CommandHandler("id", cmd_id))
@@ -446,16 +446,16 @@ application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text)
     log.info("Telegram bot started (polling).")
 
     # Параллельно — health сервер для Render (иначе Web-сервис «усыпит» процесс)
-    await run_http_server()
+ await run_http_server()
 
-    try:
-        await asyncio.Event().wait()
-    finally:
-        await application.stop()
-        await application.shutdown()
+ try:
+ await asyncio.Event().wait()
+ finally:
+ await application.stop()
+ await application.shutdown()
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except (KeyboardInterrupt, SystemExit):
-        log.info("Stopped.")
+ try:
+ asyncio.run(main())
+ except (KeyboardInterrupt, SystemExit):
+ log.info("Stopped.")
