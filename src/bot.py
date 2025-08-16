@@ -1,4 +1,4 @@
-lang))
+
         return
 
     if text == cfg["whatsapp"]:
