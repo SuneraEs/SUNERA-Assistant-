@@ -1,5 +1,4 @@
-if text == cfg["call_us"]:
-        await update.message.reply_text(t(lang, "call_us_text", phone=COMPANY_PHONE), reply_markup=main_menu_kb(lang))
+lang))
         return
 
     if text == cfg["whatsapp"]:
