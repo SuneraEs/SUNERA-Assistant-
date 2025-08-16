@@ -431,15 +431,15 @@ async def main():
         log.error("No TELEGRAM_BOT_TOKEN!")
         return
 
-application: Application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
-application.add_handler(CommandHandler("start", cmd_start))
-application.add_handler(CommandHandler("id", cmd_id))
-application.add_handler(CommandHandler("admin", cmd_admin))
+    application: Application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+    application.add_handler(CommandHandler("start", cmd_start))
+    application.add_handler(CommandHandler("id", cmd_id))
+    application.add_handler(CommandHandler("admin", cmd_admin))
     # Сначала пробуем обработать сообщение AI-обработчиком
-application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ai_response_handler))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ai_response_handler))
 
 # Если AI-обработчик "пропустил" сообщение, оно будет обработано вашей основной FSM-логикой
-application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
 
     await application.initialize()
     await application.start()
