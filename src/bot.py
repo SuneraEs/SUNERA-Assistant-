@@ -26,6 +26,12 @@ from config import (
     get_gsheets_credentials_dict, SPREADSHEET_ID, GSHEET_NAME,
     COMPANY_NAME, WEBSITE_URL, WHATSAPP_NUMBER, COMPANY_PHONE
 )
+import logging
+
+# Настраиваем логирование, чтобы сообщения выводились в консоль
+logging.basicConfig(level=logging.INFO)
+log = logging.getLogger(__name__)
+
 # ====== AI INTEGRATION (Hugging Face) ======
 from huggingface_hub import InferenceClient
 
