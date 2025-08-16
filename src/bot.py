@@ -465,4 +465,40 @@ if __name__ == "__main__":
         asyncio.run(main())
     except (KeyboardInterrupt, SystemExit):
         log.info("Stopped.")
+if __name__ == "__main__":
+    # URL вашего бота на Render
+    WEBHOOK_URL = 'https://sunera-assistant-bot.onrender.com'
 
+    async def main():
+        if not TELEGRAM_BOT_TOKEN:
+            log.error("No TELEGRAM_BOT_TOKEN!")
+            return
+
+        application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+        application.add_handler(CommandHandler("start", cmd_start))
+        application.add_handler(CommandHandler("id", cmd_id))
+        application.add_handler(CommandHandler("admin", cmd_admin))
+        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ai_response_handler))
+        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
+
+        # Запускаем приложение в режиме webhook
+        await application.bot.set_webhook(url=WEBHOOK_URL)
+        
+        # Запускаем HTTP-сервер для обработки webhook-запросов
+        server = web.TCPSite(
+            web.Application(),
+            '0.0.0.0',
+            int(os.environ.get('PORT', 8080)),
+        )
+        await server.start()
+
+        try:
+            await asyncio.Event().wait()
+        finally:
+            await application.stop()
+            await application.shutdown()
+
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        log.info("Stopped.")
