@@ -4,4 +4,3 @@ gspread
 google-auth
 phonenumbers
 pytz
-setuptools
