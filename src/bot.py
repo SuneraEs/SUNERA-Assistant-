@@ -104,7 +104,7 @@ def back_kb(lang: str) -> ReplyKeyboardMarkup:
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     USER[chat_id] = {"lang": None, "state": None}
-    kb = ReplyKeyboardMarkup([[KeyboardButton(x)] for x in LANGS], resize_keyboard=True)
+    kb = main_menu_kb("Русский")  # Укажите язык
     await update.message.reply_text(UI["Русский"]["welcome"], reply_markup=kb)
 
 async def cmd_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -242,7 +242,7 @@ async def main():
         await app.stop()
         await app.shutdown()
 
-if __name__ == "__main__":  # Исправлено на правильное имя проверки
+if __name__ == "__main__":  # Обратите внимание на правильное имя
     try:
         asyncio.run(main())
     except (KeyboardInterrupt, SystemExit):
