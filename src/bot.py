@@ -441,8 +441,6 @@ application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ai_respo
 
 # Если AI-обработчик "пропустил" сообщение, оно будет обработано вашей основной FSM-логикой
 application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
-
-
     await application.initialize()
     await application.start()
     log.info("Telegram bot started (polling).")
