@@ -19,7 +19,7 @@ import asyncio
 import logging
 
 
-)
+
 
 import gspread
 
