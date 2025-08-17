@@ -1,5 +1,5 @@
-            "city": lead.get("city"),
-            "note": lead.get("note")
+"city": lead.get("city"),
+"note": lead.get("note")
         }
         db.save_lead(lead_data_to_save)
         
