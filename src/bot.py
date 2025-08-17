@@ -1,460 +1,304 @@
-# bot.py
 import os
 import asyncio
 import logging
 import datetime
-from typing import Dict, Any, List
+import math
+from typing import Dict, Any, List, Optional, Set
+from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
+from langdetect import detect as lang_detect, DetectorFactory
 
-import phonenumbers
-from aiohttp import web
-
-from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
-from telegram.ext import (
-    ApplicationBuilder, Application, CommandHandler, MessageHandler,
-    CallbackQueryHandler, ContextTypes, filters
-)
-
-import gspread
-from google.oauth2.service_account import Credentials
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-
+import db
 from config import (
     TELEGRAM_BOT_TOKEN, ADMIN_CHAT_ID, UI, LANGS,
-    SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, LEADS_EMAILS,
-    get_gsheets_credentials_dict, SPREADSHEET_ID, GSHEET_NAME,
-    COMPANY_NAME, WEBSITE_URL, WHATSAPP_NUMBER, COMPANY_PHONE
+    COMPANY_NAME, WEBSITE_URL, WHATSAPP_NUMBER, COMPANY_PHONE,
+    SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, LEADS_EMAILS
 )
-import logging
+from utils import t, main_menu_kb, back_kb, parse_phone
 
-# Настраиваем логирование, чтобы сообщения выводились в консоль
-logging.basicConfig(level=logging.INFO)
-log = logging.getLogger(__name__)
-
-# ====== AI INTEGRATION (Hugging Face) ======
-from huggingface_hub import InferenceClient
-
-# Получаем токен Hugging Face из переменных окружения
-HF_TOKEN = os.getenv("HF_TOKEN")
-if not HF_TOKEN:
-    log.warning("Hugging Face token not found. AI functionality will be disabled.")
-    HF_CLIENT = None
-else:
-    # Инициализируем клиента Hugging Face
-    model_name = "meta-llama/Meta-Llama-3-8B-Instruct"
-    try:
-        HF_CLIENT = InferenceClient(model=model_name, token=HF_TOKEN)
-        log.info(f"Hugging Face client initialized for model: {model_name}")
-    except Exception as e:
-        log.error(f"Failed to initialize Hugging Face client: {e}. AI functionality will be disabled.")
-        HF_CLIENT = None
-
-# ====== LOGGING ======
+# ======== НАСТРОЙКИ ЛОГГИРОВАНИЯ И ПЕРЕМЕННЫЕ СОСТОЯНИЯ ========
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(name)s | %(message)s")
 log = logging.getLogger("sunera-bot")
 
-# ====== USER MEMORY ======
+# Используем in-memory хранилище для состояний пользователей
 USER: Dict[int, Dict[str, Any]] = {}
+KNOWN_CHATS: Set[int] = set()
 
-# ====== CONSTANTS FOR SOLAR CALC ======
-DEFAULT_PSH = 4.5               # средние солнечные часы/сутки
-PERFORMANCE_RATIO = 0.80         # потери системы (кабели/темп. и т.д.)
-COST_PER_KW_EUR = 1050.0         # ориент. цена за кВт установленной мощности
+# Настройка langdetect для детерминированного поведения
+DetectorFactory.seed = 0
 
-# ====== GOOGLE SHEETS ======
-def _ensure_headers(ws):
-    try:
-        if not ws.row_values(1):
-            ws.append_row(["TimestampUTC", "Username", "ChatID", "Lang", "Type", "Data"])
-    except Exception:
-        pass
-
-def get_sheet():
-    creds_dict = get_gsheets_credentials_dict()
-    if not creds_dict or not SPREADSHEET_ID:
-        log.warning("Sheets not configured (no creds or no spreadsheet id).")
-        return None
-    try:
-        scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-        creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-        client = gspread.authorize(creds)
-        sh = client.open_by_key(SPREADSHEET_ID)
-        try:
-            ws = sh.worksheet(GSHEET_NAME)
-        except gspread.WorksheetNotFound:
-            ws = sh.add_worksheet(title=GSHEET_NAME, rows=1000, cols=12)
-        _ensure_headers(ws)
-        return ws
-    except Exception as e:
-        log.error(f"Sheets error: {e}")
-        return None
-
-SHEET = get_sheet()
-
-def sheet_append(row: List[str]):
-    try:
-        if SHEET:
-            SHEET.append_row(row)
-    except Exception as e:
-        log.error(f"Append to sheet failed: {e}")
-
-# ====== EMAIL ======
+# ======== E-MAIL ========
 def send_email(subject: str, body: str):
-    if not (SMTP_HOST and SMTP_USER and SMTP_PASS and LEADS_EMAILS):
+    """Отправляет email-уведомление."""
+    if not SMTP_USER or not SMTP_PASS or not LEADS_EMAILS:
+        log.warning("Email disabled or not configured.")
         return
     try:
+        from email.mime.text import MIMEText
+        from email.mime.multipart import MIMEMultipart
+        import smtplib
+
         msg = MIMEMultipart()
         msg["From"] = SMTP_USER
         msg["To"] = ", ".join(LEADS_EMAILS)
         msg["Subject"] = subject
         msg.attach(MIMEText(body, "plain", "utf-8"))
 
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=20) as server:
-            server.starttls()
-            server.login(SMTP_USER, SMTP_PASS)
-            server.sendmail(SMTP_USER, LEADS_EMAILS, msg.as_string())
-        log.info("Email sent.")
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as s:
+            s.starttls()
+            s.login(SMTP_USER, SMTP_PASS)
+            s.sendmail(SMTP_USER, LEADS_EMAILS, msg.as_string())
+        log.info("Email sent successfully.")
     except Exception as e:
-        log.error(f"Email error: {e}")
-# ====== AI HANDLER ======
-async def ai_response_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Отправляет сообщение пользователя в AI-модель и отправляет ответ, 
-    если пользователь не находится в процессе заполнения формы.
-    """
-    chat_id = update.effective_chat.id
-    text = (update.message.text or "").strip()
-    
-    # Не отвечаем, если пользователь находится в FSM-состоянии
-    if USER.get(chat_id, {}).get("state") is not None:
-        return
+        log.error("Email send error: %s", e)
 
-    # Не отвечаем, если не задан клиент AI
-    if not HF_CLIENT:
-        return
-        
-    lang = USER.get(chat_id, {}).get("lang") or "Русский"
-    
-    # Отправляем запрос в модель, показывая, что бот "печатает"
-    await context.bot.send_chat_action(chat_id, "typing")
+# ======== ЛОГИКА БОТА ========
+async def get_or_create_user_state(chat_id: int, update: Update) -> Dict[str, Any]:
+    """Получает или создает состояние пользователя."""
+    if chat_id not in USER:
+        lang = guess_lang_by_telegram(update)
+        USER[chat_id] = {"lang": lang, "state": None, "lead": {}}
+    return USER[chat_id]
 
-    try:
-        prompt = f"Ответь на русском языке на следующий вопрос: {text}"
-        
-        ai_text = HF_CLIENT.text_generation(
-            prompt=prompt,
-            max_new_tokens=500,
-            do_sample=True,
-            temperature=0.7
-        )
-        
-        await update.message.reply_text(ai_text, reply_to_message_id=update.message.message_id)
-        
-    except Exception as e:
-        log.error(f"Произошла ошибка при работе с AI: {e}")
-        await update.message.reply_text(t(lang, "unknown"), reply_to_message_id=update.message.message_id)
-
-
-# ====== UI HELPERS ======
-def t(lang: str, key: str, **fmt):
-    cfg = UI.get(lang, UI["Русский"])
-    val = cfg.get(key, "")
-    return val.format(**fmt) if fmt else val
-
-def main_menu_kb(lang: str) -> ReplyKeyboardMarkup:
-    cfg = UI.get(lang, UI["Русский"])
-    rows = [
-        [KeyboardButton(cfg["about_us"]), KeyboardButton(cfg["services"])],
-        [KeyboardButton(cfg["consult"]), KeyboardButton(cfg["solar_calc_button"])],
-        [KeyboardButton(cfg["calc_button"]), KeyboardButton(cfg["website"])],
-        [KeyboardButton(cfg["whatsapp"]), KeyboardButton(cfg["call_us"])],
-        [KeyboardButton(cfg["change_lang"])]
-    ]
-    return ReplyKeyboardMarkup(rows, resize_keyboard=True)
-
-def back_kb(lang: str) -> ReplyKeyboardMarkup:
-    cfg = UI.get(lang, UI["Русский"])
-    return ReplyKeyboardMarkup([[KeyboardButton(cfg["back"])]], resize_keyboard=True)
-
-# ====== COMMANDS ======
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик команды /start."""
     chat_id = update.effective_chat.id
-    # Сброс
-    USER[chat_id] = {"lang": None, "state": None, "lead": {}}
-    kb = ReplyKeyboardMarkup([[KeyboardButton(x)] for x in LANGS], resize_keyboard=True, one_time_keyboard=True)
-    await update.message.reply_text(UI["Русский"]["welcome"], reply_markup=kb)
+    user_data = await get_or_create_user_state(chat_id, update)
+    lang = user_data["lang"]
+    await update.message.reply_text(t(lang, "welcome"), reply_markup=main_menu_kb(lang))
 
 async def cmd_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик команды /id."""
     chat_id = update.effective_chat.id
-    lang = USER.get(chat_id, {}).get("lang") or "Русский"
-    await update.message.reply_text(t(lang, "your_id", cid=chat_id))
+    await update.message.reply_text(f"chat_id: {chat_id}")
 
 async def cmd_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик команды /admin."""
     chat_id = update.effective_chat.id
     if ADMIN_CHAT_ID and chat_id == ADMIN_CHAT_ID:
-        sheets = "✅" if SHEET else "—"
-        users_cnt = len(USER)
-        await update.message.reply_text(
-            t("Русский", "admin_status", sheets=sheets, users_cnt=users_cnt)
-        )
+        await update.message.reply_text(f"Статус: OK\nПользователей в памяти: {len(USER)}")
     else:
         await update.message.reply_text("No access.")
 
-# ====== TEXT HANDLER (FSM) ======
+async def on_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик получения контакта."""
+    chat_id = update.effective_chat.id
+    user_data = await get_or_create_user_state(chat_id, update)
+    lang = user_data["lang"]
+    
+    if user_data["state"] == "consult_name" and update.message.contact:
+        contact = update.message.contact
+        user_data["lead"]["name"] = contact.first_name or contact.last_name or ""
+        user_data["lead"]["phone"] = parse_phone(contact.phone_number)
+        user_data["state"] = "consult_city"
+        await update.message.reply_text(t(lang, "consult_prompt_city"), reply_markup=back_kb(lang))
+
 async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message:
-        return
+    """Обработчик текстовых сообщений."""
+    if not update.message: return
     chat_id = update.effective_chat.id
     text = (update.message.text or "").strip()
+    user_data = await get_or_create_user_state(chat_id, update)
+    lang = user_data["lang"]
+    state = user_data["state"]
 
-    # Выбор языка
     if text in LANGS:
-        USER[chat_id] = {"lang": text, "state": None, "lead": {}}
-        await update.message.reply_text(t(text, "menu"), reply_markup=main_menu_kb(text))
+        user_data["lang"] = text
+        user_data["state"] = None
+        await update.message.reply_text(t(text, "welcome"), reply_markup=main_menu_kb(text))
+        db.save_dialog(chat_id, lang, "user", text)
+        db.save_dialog(chat_id, text, "assistant", t(text, "welcome"))
         return
 
-    # Если язык ещё не выбран
-    if chat_id not in USER or USER[chat_id].get("lang") is None:
-        kb = ReplyKeyboardMarkup([[KeyboardButton(x)] for x in LANGS], resize_keyboard=True)
-        await update.message.reply_text(UI["Русский"]["welcome"], reply_markup=kb)
-        return
-
-    lang = USER[chat_id]["lang"]
-    state = USER[chat_id].get("state")
-    cfg = UI[lang]
-
-    # Общие кнопки
-    if text == cfg["change_lang"]:
-        kb = ReplyKeyboardMarkup([[KeyboardButton(x)] for x in LANGS], resize_keyboard=True, one_time_keyboard=True)
-        USER[chat_id]["state"] = None
-        await update.message.reply_text(UI["Русский"]["welcome"], reply_markup=kb)
-        return
-
-    if text == cfg["back"]:
-        USER[chat_id]["state"] = None
+    if text == t(lang, "back"):
+        user_data["state"] = None
+        user_data["lead"] = {}
         await update.message.reply_text(t(lang, "menu"), reply_markup=main_menu_kb(lang))
+        db.save_dialog(chat_id, lang, "user", text)
+        db.save_dialog(chat_id, lang, "assistant", t(lang, "menu"))
         return
 
-    if text == cfg["about_us"]:
-        await update.message.reply_text(cfg["about_us_text"].format(company=COMPANY_NAME), reply_markup=main_menu_kb(lang))
+    # Логика для состояния "Заявка/Консультация"
+    if state == "consult_name":
+        user_data["lead"]["name"] = text
+        user_data["state"] = "consult_phone"
+        await update.message.reply_text(t(lang, "consult_prompt_phone"), reply_markup=back_kb(lang))
+        db.save_dialog(chat_id, lang, "user", text)
+        db.save_dialog(chat_id, lang, "assistant", t(lang, "consult_prompt_phone"))
         return
-
-    if text == cfg["services"]:
-        await update.message.reply_text(cfg["services_info"], reply_markup=main_menu_kb(lang))
+    if state == "consult_phone":
+        user_data["lead"]["phone"] = parse_phone(text)
+        user_data["state"] = "consult_city"
+        await update.message.reply_text(t(lang, "consult_prompt_city"), reply_markup=back_kb(lang))
+        db.save_dialog(chat_id, lang, "user", text)
+        db.save_dialog(chat_id, lang, "assistant", t(lang, "consult_prompt_city"))
         return
-
-    if text == cfg["website"]:
-        await update.message.reply_text(t(lang, "website_text", url=WEBSITE_URL), reply_markup=main_menu_kb(lang))
+    if state == "consult_city":
+        user_data["lead"]["city"] = text
+        user_data["state"] = "consult_note"
+        await update.message.reply_text(t(lang, "consult_prompt_note"), reply_markup=back_kb(lang))
+        db.save_dialog(chat_id, lang, "user", text)
+        db.save_dialog(chat_id, lang, "assistant", t(lang, "consult_prompt_note"))
         return
-
-    if text == cfg["whatsapp"]:
-        wa = WHATSAPP_NUMBER.replace("+", "").replace(" ", "")
-        await update.message.reply_text(t(lang, "whatsapp_text", wa=wa), reply_markup=main_menu_kb(lang))
-        return
-
-    if text == cfg["call_us"]:
-        await update.message.reply_text(t(lang, "call_us_text", phone=COMPANY_PHONE), reply_markup=main_menu_kb(lang))
-        return
-
-    # Кредитный калькулятор
-    if text == cfg["calc_button"]:
-        USER[chat_id]["state"] = "calc"
-        await update.message.reply_text(cfg["calc_prompt"], reply_markup=back_kb(lang))
-        return
-
-    if state == "calc":
-        try:
-            p_s_r = text.split()
-            if len(p_s_r) != 3:
-                raise ValueError
-            principal = float(p_s_r[0])
-            years = int(p_s_r[1])
-            rate = float(p_s_r[2]) / 100.0
-            if principal <= 0 or years <= 0 or rate <= 0:
-                await update.message.reply_text(cfg["calc_invalid_input"], reply_markup=back_kb(lang))
-                return
-            m_rate = rate / 12.0
-            n = years * 12
-            monthly = principal * (m_rate * (1 + m_rate) ** n) / ((1 + m_rate) ** n - 1)
-            total = monthly * n
-            over = total - principal
-            await update.message.reply_text(
-                cfg["calc_result"].format(
-                    monthly=f"{monthly:,.2f}", total=f"{total:,.2f}", over=f"{over:,.2f}"
-                ).replace(",", " "),
-                reply_markup=main_menu_kb(lang)
-            )
-            USER[chat_id]["state"] = None
-        except Exception:
-            await update.message.reply_text(cfg["calc_format_error"], reply_markup=back_kb(lang))
-        return
-
-    # Солнечный калькулятор
-    if text == cfg["solar_calc_button"]:
-        USER[chat_id]["state"] = "solar_calc"
-        await update.message.reply_text(cfg["solar_calc_prompt"], reply_markup=back_kb(lang))
-        return
-
-    if state == "solar_calc":
-        try:
-            parts = text.split()
-            if len(parts) not in (2, 3):
-                raise ValueError
-            consumption = float(parts[0])          # кВт·ч/мес
-            tariff = float(parts[1])               # €/кВт·ч
-            psh = float(parts[2]) if len(parts) == 3 else DEFAULT_PSH
-            if min(consumption, tariff, psh) <= 0:
-                await update.message.reply_text(cfg["solar_invalid_input"], reply_markup=back_kb(lang))
-                return
-
-            # kW = (kWh/мес)/30 / PSH / PR
-            kw = round(consumption / 30.0 / psh / PERFORMANCE_RATIO, 2)
-            cost = round(kw * COST_PER_KW_EUR, 2)
-            yearly_gen = round(kw * psh * 365 * PERFORMANCE_RATIO, 0)
-            yearly_save = round(yearly_gen * tariff, 2)
-            payback = round(cost / yearly_save, 2) if yearly_save > 0 else 0.0
-
-            await update.message.reply_text(
-                cfg["solar_calc_result"].format(
-                    kw=f"{kw:.2f}",
-                    cost=f"{cost:,.2f}".replace(",", " "),
-                    cost_per_kw=f"{COST_PER_KW_EUR:,.0f}".replace(",", " "),
-                    gen=f"{yearly_gen:,.0f}".replace(",", " "),
-                    save=f"{yearly_save:,.2f}".replace(",", " "),
-                    payback=f"{payback:,.2f}".replace(",", " ")
-                ),
-                reply_markup=main_menu_kb(lang)
-            )
-
-            # лог в таблицу
-            uname = f"@{update.effective_user.username}" if update.effective_user and update.effective_user.username else ""
-            ts = datetime.datetime.utcnow().isoformat()
-            sheet_append([ts, uname, str(chat_id), lang, "SolarCalc",
-                          f"{consumption} kWh/mo; {tariff} €/kWh; PSH {psh} -> {kw} kW (~{cost} €)"])
-
-            USER[chat_id]["state"] = None
-        except Exception:
-            await update.message.reply_text(cfg["solar_format_error"], reply_markup=back_kb(lang))
-        return
-
-    # Заявка/консультация — пошагово
-    if text == cfg["consult"]:
-        USER[chat_id]["state"] = "lead_name"
-        USER[chat_id]["lead"] = {}
-        await update.message.reply_text(cfg["consult_prompt_name"], reply_markup=back_kb(lang))
-        return
-
-    if state == "lead_name":
-        USER[chat_id]["lead"]["name"] = text
-        USER[chat_id]["state"] = "lead_phone"
-        await update.message.reply_text(cfg["consult_prompt_phone"], reply_markup=back_kb(lang))
-        return
-
-    if state == "lead_phone":
-        # нормализуем телефон
-        phone_raw = text
-        phone_fmt = ""
-        for token in text.split():
-            try:
-                pn = phonenumbers.parse(token, None)
-                if phonenumbers.is_valid_number(pn):
-                    phone_fmt = phonenumbers.format_number(pn, phonenumbers.PhoneNumberFormat.INTERNATIONAL)
-                    break
-            except Exception:
-                continue
-        USER[chat_id]["lead"]["phone"] = phone_fmt or phone_raw
-        USER[chat_id]["state"] = "lead_city"
-        await update.message.reply_text(cfg["consult_prompt_city"], reply_markup=back_kb(lang))
-        return
-
-    if state == "lead_city":
-        USER[chat_id]["lead"]["city"] = text
-        USER[chat_id]["state"] = "lead_note"
-        await update.message.reply_text(cfg["consult_prompt_note"], reply_markup=back_kb(lang))
-        return
-
-    if state == "lead_note":
-        USER[chat_id]["lead"]["note"] = text
-        USER[chat_id]["state"] = None
-
-        lead = USER[chat_id]["lead"]
+    if state == "consult_note":
+        user_data["lead"]["note"] = text
+        user_data["state"] = None
+        lead = user_data["lead"]
         uname = f"@{update.effective_user.username}" if update.effective_user and update.effective_user.username else ""
-        ts = datetime.datetime.utcnow().isoformat()
-
-        # Сообщение с лидом
+        
+        lead_data_to_save = {
+            "username": uname,
+            "chat_id": chat_id,
+            "lang": lang,
+            "name": lead.get("name"),
+            "phone": lead.get("phone"),
+            "city": lead.get("city"),
+            "note": lead.get("note")
+        }
+        db.save_lead(lead_data_to_save)
+        
         lead_text = (
-            f"🆕 Лид ({COMPANY_NAME})\n\n"
-            f"👤 Имя: {lead.get('name','')}\n"
-            f"📞 Телефон: {lead.get('phone','')}\n"
-            f"📍 Город/адрес: {lead.get('city','')}\n"
-            f"📝 Комментарий: {lead.get('note','')}\n"
-            f"👤 От: {uname or chat_id}\n"
-            f"🌐 Язык: {lang}\n"
+            f"🆕 Лид ({COMPANY_NAME})\n"
+            f"Имя: {lead.get('name','')}\n"
+            f"Тел: {lead.get('phone','')}\n"
+            f"Город: {lead.get('city','')}\n"
+            f"Комментарий: {lead.get('note','')}\n"
+            f"От: {uname or chat_id}\n"
+            f"Язык: {lang}"
         )
-
-        # Админу в Telegram
+        
         if ADMIN_CHAT_ID:
             try:
                 await context.bot.send_message(ADMIN_CHAT_ID, lead_text)
-            except Exception:
-                pass
-
-        # В Google Sheets
-        sheet_append([
-            ts, uname, str(chat_id), lang, "Consult",
-            f"Name={lead.get('name','')}; Phone={lead.get('phone','')}; City={lead.get('city','')}; Note={lead.get('note','')}"
-        ])
-
-        # На почту
-        send_email("SUNERA: новая заявка", lead_text)
-
-        await update.message.reply_text(cfg["consult_ok"], reply_markup=main_menu_kb(lang))
-        # CTA WhatsApp
-        wa = WHATSAPP_NUMBER.replace("+", "").replace(" ", "")
-        await update.message.reply_text(t(lang, "whatsapp_text", wa=wa))
+            except Exception as e:
+                log.error(f"Failed to notify admin: {e}")
+        
+        send_email(f"SUNERA lead: {lead.get('name')}", lead_text)
+        
+        await update.message.reply_text(t(lang, "consult_ok"), reply_markup=main_menu_kb(lang))
+        db.save_dialog(chat_id, lang, "user", text)
+        db.save_dialog(chat_id, lang, "assistant", t(lang, "consult_ok"))
         return
 
-    # По умолчанию
-    await update.message.reply_text(cfg["unknown"], reply_markup=main_menu_kb(lang))
+    # Логика для кредитного калькулятора
+    if state == "calc":
+        db.save_dialog(chat_id, lang, "user", text)
+        try:
+            parts = text.replace(",", ".").split()
+            if len(parts) != 3: raise ValueError(t(lang, "calc_format_error"))
+            amount = float(parts[0])
+            years = int(parts[1])
+            rate = float(parts[2])
+            if min(amount, years, rate) <= 0: raise ValueError(t(lang, "calc_invalid_input"))
 
-# ====== HEALTH HTTP SERVER (для Render free) ======
-async def run_http_server():
-    async def ok(request):
-        return web.Response(text="OK")
-    app = web.Application()
-    app.add_routes([web.get("/", ok), web.get("/health", ok)])
-    port = int(os.environ.get("PORT", "10000"))
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", port)
-    await site.start()
-    log.info(f"Health server on 0.0.0.0:{port}")
+            rate_monthly = rate / 100 / 12
+            months = years * 12
+            monthly_payment = (amount * rate_monthly) / (1 - math.pow(1 + rate_monthly, -months))
+            total_payment = monthly_payment * months
+            overpayment = total_payment - amount
 
-# ====== MAIN ======
+            out = t(lang, "calc_result", monthly=round(monthly_payment, 2), total=round(total_payment, 2), over=round(overpayment, 2))
+            await update.message.reply_text(out, reply_markup=main_menu_kb(lang))
+            user_data["state"] = None
+            db.save_calculation(chat_id, lang, "", "loan", text, out)
+            db.save_dialog(chat_id, lang, "assistant", out)
+        except ValueError:
+            await update.message.reply_text(t(lang, "calc_format_error"), reply_markup=back_kb(lang))
+            db.save_dialog(chat_id, lang, "assistant", t(lang, "calc_format_error"))
+        return
+
+    # Логика для солнечного калькулятора
+    if state == "solar_calc":
+        db.save_dialog(chat_id, lang, "user", text)
+        try:
+            parts = text.replace(",", ".").split()
+            if len(parts) < 2 or len(parts) > 3: raise ValueError
+            consumption = float(parts[0])
+            tariff = float(parts[1])
+            psh = float(parts[2]) if len(parts) == 3 else 4.5
+            if min(consumption, tariff, psh) <= 0: raise ValueError
+            kw = round(consumption / 30.0 / psh / 0.8, 2)
+            cost_per_kw = 1050
+            cost = round(kw * cost_per_kw, 2)
+            yearly_gen = round(kw * psh * 365 * 0.8, 0)
+            yearly_save = round(yearly_gen * tariff, 2)
+            payback = round(cost / yearly_save, 2) if yearly_save > 0 else 0.0
+            out = t(lang, "solar_calc_result", kw=kw, cost=cost, gen=yearly_gen, save=yearly_save, payback=payback, cost_per_kw=cost_per_kw)
+            await update.message.reply_text(out, reply_markup=main_menu_kb(lang))
+            user_data["state"] = None
+            uname = f"@{update.effective_user.username}" if update.effective_user.username else ""
+            db.save_calculation(chat_id, lang, uname, "solar", text, out)
+            db.save_dialog(chat_id, lang, "assistant", out)
+        except (ValueError, IndexError):
+            await update.message.reply_text(t(lang, "solar_format_error"), reply_markup=back_kb(lang))
+            db.save_dialog(chat_id, lang, "assistant", t(lang, "solar_format_error"))
+        return
+
+    # Обработка кнопок главного меню
+    db.save_dialog(chat_id, lang, "user", text)
+    if text == t(lang, "about_us"):
+        txt = t(lang, "about_us_text").format(company=COMPANY_NAME, phone=COMPANY_PHONE, url=WEBSITE_URL)
+        await update.message.reply_text(txt, reply_markup=main_menu_kb(lang))
+        db.save_dialog(chat_id, lang, "assistant", txt)
+        return
+    if text == t(lang, "services"):
+        txt = t(lang, "services_info")
+        await update.message.reply_text(txt, reply_markup=main_menu_kb(lang))
+        db.save_dialog(chat_id, lang, "assistant", txt)
+        return
+    if text == t(lang, "consult"):
+        user_data["state"] = "consult_name"
+        user_data["lead"] = {}
+        await update.message.reply_text(t(lang, "consult_prompt_name"), reply_markup=back_kb(lang))
+        db.save_dialog(chat_id, lang, "assistant", t(lang, "consult_prompt_name"))
+        return
+    if text == t(lang, "solar_calc_button"):
+        user_data["state"] = "solar_calc"
+        await update.message.reply_text(t(lang, "solar_calc_prompt"), reply_markup=back_kb(lang))
+        db.save_dialog(chat_id, lang, "assistant", t(lang, "solar_calc_prompt"))
+        return
+    if text == t(lang, "calc_button"):
+        user_data["state"] = "calc"
+        await update.message.reply_text(t(lang, "calc_prompt"), reply_markup=back_kb(lang))
+        db.save_dialog(chat_id, lang, "assistant", t(lang, "calc_prompt"))
+        return
+    if text == t(lang, "website"):
+        await update.message.reply_text(t(lang, "website_text", url=WEBSITE_URL))
+        return
+    if text == t(lang, "whatsapp"):
+        await update.message.reply_text(t(lang, "whatsapp_text", wa=WHATSAPP_NUMBER.replace('+', '')))
+        return
+    if text == t(lang, "call_us"):
+        await update.message.reply_text(t(lang, "call_us_text", phone=COMPANY_PHONE))
+        return
+
+    # Если бот не понял команду
+    await update.message.reply_text(t(lang, "unknown"), reply_markup=main_menu_kb(lang))
+    db.save_dialog(chat_id, lang, "assistant", t(lang, "unknown"))
+
+# ======== ТОЧКА ВХОДА ========
 async def main():
+    """Главная функция для запуска бота."""
     if not TELEGRAM_BOT_TOKEN:
-        log.error("No TELEGRAM_BOT_TOKEN!")
+        log.error("No TELEGRAM_BOT_TOKEN set in env!")
         return
+    
+    db.init_db()
 
-    application: Application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+    application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+    
+    # Регистрация обработчиков
     application.add_handler(CommandHandler("start", cmd_start))
     application.add_handler(CommandHandler("id", cmd_id))
     application.add_handler(CommandHandler("admin", cmd_admin))
-    # Сначала пробуем обработать сообщение AI-обработчиком
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ai_response_handler))
-
-# Если AI-обработчик "пропустил" сообщение, оно будет обработано вашей основной FSM-логикой
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
-
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, on_text))
+    application.add_handler(MessageHandler(filters.CONTACT & filters.ChatType.PRIVATE, on_contact))
+    
     await application.initialize()
     await application.start()
-    log.info("Telegram bot started (polling).")
-
-    # Параллельно — health сервер для Render (иначе Web-сервис «усыпит» процесс)
-    await run_http_server()
-
+    log.info("Bot started")
     try:
+        # Удерживаем программу запущенной
         await asyncio.Event().wait()
     finally:
         await application.stop()
@@ -464,41 +308,4 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except (KeyboardInterrupt, SystemExit):
-        log.info("Stopped.")
-if __name__ == "__main__":
-    # URL вашего бота на Render
-    WEBHOOK_URL = 'https://sunera-assistant-bot.onrender.com'
-
-    async def main():
-        if not TELEGRAM_BOT_TOKEN:
-            log.error("No TELEGRAM_BOT_TOKEN!")
-            return
-
-        application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
-        application.add_handler(CommandHandler("start", cmd_start))
-        application.add_handler(CommandHandler("id", cmd_id))
-        application.add_handler(CommandHandler("admin", cmd_admin))
-        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ai_response_handler))
-        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
-
-        # Запускаем приложение в режиме webhook
-        await application.bot.set_webhook(url=WEBHOOK_URL)
-        
-        # Запускаем HTTP-сервер для обработки webhook-запросов
-        server = web.TCPSite(
-            web.Application(),
-            '0.0.0.0',
-            int(os.environ.get('PORT', 8080)),
-        )
-        await server.start()
-
-        try:
-            await asyncio.Event().wait()
-        finally:
-            await application.stop()
-            await application.shutdown()
-
-    try:
-        asyncio.run(main())
-    except (KeyboardInterrupt, SystemExit):
-        log.info("Stopped.")
+        log.info("Stopped")
