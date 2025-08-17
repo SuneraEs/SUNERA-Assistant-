@@ -1,6 +1,5 @@
-python-telegram-bot==20.8
+Python-telegram-bot==20.8
 aiohttp==3.9.5
-aiohttp_web==3.0.0
 langdetect==1.0.9
 phonenumbers==8.13.35
 python-dotenv==1.0.1
