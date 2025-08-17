@@ -1,18 +1,3 @@
-import logging
-import asyncio
-import os
-import math
-import phonenumbers
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
-from telegram.constants import ParseMode
-from sunera_db import DB
-from sunera_t import T
-from sunera_kb import main_menu_kb, back_kb
-from email_sender import send_email
-from google_sheets import GoogleSheets
-from huggingface_client import HuggingFaceClient
-import google_sheets
 
 # ======== КОНСТАНТЫ И НАСТРОЙКИ ========
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
