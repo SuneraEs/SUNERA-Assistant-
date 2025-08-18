@@ -9,7 +9,7 @@ from email.mime.multipart import MIMEMultipart
 from huggingface_hub import InferenceClient
 
 from db import DB
-from utils import T
+from utils import t, main_menu_kb, back_kb # Импортируем нужные функции из utils
 from config import (
     get_gsheets_credentials_dict, SPREADSHEET_ID, GSHEET_NAME,
     HUGGING_FACE_TOKEN, LLM_MODEL,
@@ -23,7 +23,9 @@ class Services:
     """Класс для хранения всех инициализированных сервисов."""
     def __init__(self):
         self.db = None
-        self.t = None
+        self.t = t # Здесь мы присваиваем функции
+        self.main_menu_kb = main_menu_kb
+        self.back_kb = back_kb
         self.llm_client = None
         self.sheets_client = None
         
@@ -77,14 +79,10 @@ async def init_services():
     services.db = DB()
     services.db.init_db()
 
-    # Инициализация переводов и утилит
-    services.t = T()
-
     # Инициализация LLM
     if HUGGING_FACE_TOKEN:
         try:
             services.llm_client = InferenceClient(model=LLM_MODEL, token=HUGGING_FACE_TOKEN)
-            # Временно заглушим RAG-функционал, чтобы бот заработал
             def generate_response(dialog_history, prompt):
                 return services.llm_client.text_generation(prompt=prompt, max_new_tokens=250)
             services.llm_client.generate_response = generate_response
