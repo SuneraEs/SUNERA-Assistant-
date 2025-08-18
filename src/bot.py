@@ -44,5 +44,5 @@ async def main():
 
 if __name__ == "__main__":
     import telegram
-log.info(f"Running python-telegram-bot version: {telegram.__version__}")
+    log.info(f"Running python-telegram-bot version: {telegram.__version__}")
     asyncio.run(main())
