@@ -43,4 +43,6 @@ async def main():
     await application.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
+    import telegram
+log.info(f"Running python-telegram-bot version: {telegram.__version__}")
     asyncio.run(main())
