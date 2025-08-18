@@ -12,7 +12,7 @@ from db import DB
 from utils import t, main_menu_kb, back_kb
 from config import (
     get_gsheets_credentials_dict, SPREADSHEET_ID, GSHEET_NAME,
-    HF_TOKEN, LLM_MODEL, # <--- ИЗМЕНЕНИЕ: используем HF_TOKEN вместо HUGGING_FACE_TOKEN
+    LLM_MODEL, # <--- ИЗМЕНЕНИЕ: удаляем HF_TOKEN из импорта
     SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, LEADS_EMAILS,
     COMPANY_NAME, COMPANY_PHONE, WEBSITE_URL, WHATSAPP_NUMBER, ADMIN_CHAT_ID
 )
@@ -40,7 +40,8 @@ class Services:
         self.smtp_user = SMTP_USER
         self.smtp_pass = SMTP_PASS
         self.leads_emails = LEADS_EMAILS
-        self.hf_token = HF_TOKEN # Сохраняем токен для использования
+        self.telegram_bot_token = os.getenv("TELEGRAM_BOT_TOKEN") # Получаем здесь напрямую
+        self.hf_token = os.getenv("HF_TOKEN") # <--- ИЗМЕНЕНИЕ: получаем токен здесь напрямую
 
     def sheet_append(self, row: List[str]):
         """Добавляет строку в лист Google Sheets."""
@@ -83,7 +84,7 @@ async def init_services():
     # Инициализация LLM
     if services.hf_token:
         try:
-            services.llm_client = InferenceClient(model=LLM_MODEL, token=services.hf_token) # <--- ИЗМЕНЕНИЕ: используем services.hf_token
+            services.llm_client = InferenceClient(model=LLM_MODEL, token=services.hf_token)
             def generate_response(dialog_history, prompt):
                 return services.llm_client.text_generation(prompt=prompt, max_new_tokens=250)
             services.llm_client.generate_response = generate_response
