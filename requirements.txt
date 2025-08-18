@@ -1,6 +1,6 @@
 python-telegram-bot==20.8
 aiohttp==3.9.5
-gspread==6.7.0
+gspread==6.2.1
 google-auth==2.21.0
 phonenumbers==8.13.35
 huggingface-hub==0.23.0
