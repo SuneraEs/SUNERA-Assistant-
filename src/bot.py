@@ -1,8 +1,7 @@
 import os
 import logging
 import asyncio
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
-from telegram import Update
+from telegram.ext import Application, CommandHandler, MessageHandler, filters
 from telegram.constants import ParseMode
 
 from handlers import (
@@ -30,7 +29,7 @@ async def main():
         log.error("No TELEGRAM_BOT_TOKEN set in env!")
         return
 
-    application = ApplicationBuilder().token(services.telegram_bot_token).build()
+    application = Application.builder().token(services.telegram_bot_token).build()
 
     # Регистрация обработчиков
     application.add_handler(CommandHandler("start", cmd_start))
@@ -45,4 +44,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
