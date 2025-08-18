@@ -9,10 +9,10 @@ from email.mime.multipart import MIMEMultipart
 from huggingface_hub import InferenceClient
 
 from db import DB
-from utils import t, main_menu_kb, back_kb # Импортируем нужные функции из utils
+from utils import t, main_menu_kb, back_kb
 from config import (
     get_gsheets_credentials_dict, SPREADSHEET_ID, GSHEET_NAME,
-    HUGGING_FACE_TOKEN, LLM_MODEL,
+    HF_TOKEN, LLM_MODEL, # <--- ИЗМЕНЕНИЕ: используем HF_TOKEN вместо HUGGING_FACE_TOKEN
     SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, LEADS_EMAILS,
     COMPANY_NAME, COMPANY_PHONE, WEBSITE_URL, WHATSAPP_NUMBER, ADMIN_CHAT_ID
 )
@@ -23,7 +23,7 @@ class Services:
     """Класс для хранения всех инициализированных сервисов."""
     def __init__(self):
         self.db = None
-        self.t = t # Здесь мы присваиваем функции
+        self.t = t
         self.main_menu_kb = main_menu_kb
         self.back_kb = back_kb
         self.llm_client = None
@@ -40,6 +40,7 @@ class Services:
         self.smtp_user = SMTP_USER
         self.smtp_pass = SMTP_PASS
         self.leads_emails = LEADS_EMAILS
+        self.hf_token = HF_TOKEN # Сохраняем токен для использования
 
     def sheet_append(self, row: List[str]):
         """Добавляет строку в лист Google Sheets."""
@@ -80,9 +81,9 @@ async def init_services():
     services.db.init_db()
 
     # Инициализация LLM
-    if HUGGING_FACE_TOKEN:
+    if services.hf_token:
         try:
-            services.llm_client = InferenceClient(model=LLM_MODEL, token=HUGGING_FACE_TOKEN)
+            services.llm_client = InferenceClient(model=LLM_MODEL, token=services.hf_token) # <--- ИЗМЕНЕНИЕ: используем services.hf_token
             def generate_response(dialog_history, prompt):
                 return services.llm_client.text_generation(prompt=prompt, max_new_tokens=250)
             services.llm_client.generate_response = generate_response
