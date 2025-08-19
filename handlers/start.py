@@ -1,52 +1,34 @@
-# handlers/start.py
-import logging
 from telegram import Update
 from telegram.ext import ContextTypes
-import config
-from utils.common import pick_lang, t, main_menu, anti_flood_ok
 
-log = logging.getLogger("start")
-
+# ===== команда /start =====
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    lang = context.user_data.get("lang") or pick_lang(user.language_code)
-    context.user_data["lang"] = lang
-    await update.message.reply_text(t("welcome", lang), reply_markup=main_menu(lang))
+    await update.message.reply_text(
+        "👋 Привет! Я бот компании SUNERA.\n"
+        "Я помогу вам оставить заявку, рассчитать солнечную систему или связаться с менеджером."
+    )
 
+# ===== команда /id =====
 async def cmd_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    await update.message.reply_text(f"chat_id: {user.id}")
+    await update.message.reply_text(
+        f"🆔 Ваш Telegram ID: {update.effective_user.id}"
+    )
 
+# ===== команда /admin =====
 async def cmd_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Admin OK")
+    user_id = update.effective_user.id
+    # здесь можно сделать проверку admin_id из config
+    await update.message.reply_text(f"⚡ Админ-панель недоступна пользователю {user_id}")
 
+# ===== обработка обычных текстов =====
 async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message:
-        return
-    user = update.effective_user
-    if not anti_flood_ok(user.id, config.ANTI_FLOOD_WINDOW_SEC):
-        return
-    lang = context.user_data.get("lang") or pick_lang(user.language_code)
-    txt = (update.message.text or "").strip()
+    text = update.message.text.strip().lower()
 
-    if txt == t("menu_about", lang):
-        await update.message.reply_text(t("about_text", lang))
-        return
-    if txt == t("menu_services", lang):
-        await update.message.reply_text("• Grid-tied\n• Hybrid (with batteries)\n• Off-grid\n• O&M")
-        return
-    if txt == t("menu_site", lang):
-        await update.message.reply_text(config.WEBSITE_URL)
-        return
-    if txt == t("menu_whatsapp", lang):
-        await update.message.reply_text(f"https://wa.me/{config.WHATSAPP_NUMBER}")
-        return
-    if txt == t("menu_call", lang):
-        await update.message.reply_text(f"☎ {config.COMPANY_PHONE}")
-        return
-    if txt == t("menu_lang", lang):
-        from .lang import lang_menu
-        await lang_menu(update, context)
-        return
-
-    await update.message.reply_text(t("unknown", lang))
+    if "цена" in text or "стоимость" in text:
+        await update.message.reply_text("💶 Наша команда свяжется с вами для расчёта стоимости.")
+    elif "контакт" in text or "телефон" in text:
+        await update.message.reply_text("📞 Вы можете позвонить нам: +49 15510 361517")
+    else:
+        await update.message.reply_text(
+            "🙏 Спасибо за сообщение! Наш менеджер ответит вам в ближайшее время."
+        )
