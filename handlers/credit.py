@@ -1,21 +1,20 @@
 # handlers/credit.py
 from telegram import Update
-from telegram.ext import ContextTypes, ConversationHandler, MessageHandler, CommandHandler, filters
+from telegram.ext import ConversationHandler, MessageHandler, CommandHandler, filters
 from utils.common import pick_lang, t, loan_calc
 
 ASK = range(1)
 
-async def start_credit(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def start_credit(update: Update, context):
     lang = context.user_data.get("lang", pick_lang(update.effective_user.language_code))
     await update.message.reply_text(t("credit_prompt", lang))
     return ASK
 
-async def credit_parse(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def credit_parse(update: Update, context):
     lang = context.user_data.get("lang", pick_lang(update.effective_user.language_code))
     parts = (update.message.text or "").replace(",", ".").split()
     if len(parts) != 3:
-        await update.message.reply_text(t("credit_badfmt", lang))
-        return ASK
+        await update.message.reply_text(t("credit_badfmt", lang)); return ASK
     try:
         amount = float(parts[0]); years = float(parts[1]); rate = float(parts[2])
         m, total, over = loan_calc(amount, years, rate)
@@ -25,7 +24,7 @@ async def credit_parse(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(t("credit_badfmt", lang))
         return ASK
 
-async def credit_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def credit_cancel(update: Update, context):
     await update.message.reply_text("❌")
     return ConversationHandler.END
 
