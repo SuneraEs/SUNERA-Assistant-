@@ -1,6 +1,5 @@
 # utils/sheets.py
-import logging
-import time
+import logging, time
 import gspread
 from google.oauth2.service_account import Credentials
 from typing import List
@@ -18,10 +17,7 @@ class SheetClient:
             log.warning("Google Sheets not configured.")
             return False
         try:
-            scopes = [
-                "https://www.googleapis.com/auth/spreadsheets",
-                "https://www.googleapis.com/auth/drive"
-            ]
+            scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
             creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
             client = gspread.authorize(creds)
             sh = client.open_by_key(SPREADSHEET_ID)
@@ -40,6 +36,7 @@ class SheetClient:
 
     def append_lead(self, username: str, chat_id: int, lang: str, name: str, phone: str, city: str, note: str):
         if not self.ws:
+            log.warning("Sheets not ready - skipping append.")
             return False
         try:
             ts = int(time.time())
