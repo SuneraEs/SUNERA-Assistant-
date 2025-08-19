@@ -1,7 +1,0 @@
-services:
-  - type: web
-    name: sunera-bot
-    env: python
-    plan: free
-    buildCommand: "pip install --no-cache-dir --upgrade --upgrade-strategy eager -r requirements.txt"
-    startCommand: "python3 src/bot.py"
