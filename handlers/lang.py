@@ -13,14 +13,14 @@ LANG_LABELS = {
     "uk": "Українська 🇺🇦",
 }
 
-def build_lang_kb(curr: str) -> InlineKeyboardMarkup:
+def build_lang_kb(curr: str):
     rows = []
     row = []
     for code, label in LANG_LABELS.items():
         prefix = "✅ " if code == curr else ""
         row.append(InlineKeyboardButton(f"{prefix}{label}", callback_data=f"lang:{code}"))
         if len(row) == 2:
-            rows.append(row); row = []
+            rows.append(row); row=[]
     if row: rows.append(row)
     return InlineKeyboardMarkup(rows)
 
@@ -34,12 +34,11 @@ async def lang_pick_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = q.data or ""
     if not data.startswith("lang:"):
         return
-    new_lang = data.split(":", 1)[1]
+    new_lang = data.split(":",1)[1]
     if new_lang not in config.SUPPORTED_LANGS:
         return
     context.user_data["lang"] = new_lang
     await q.edit_message_text("✅ Language updated.", reply_markup=build_lang_kb(new_lang))
-    # и сразу покажем меню:
     from utils.common import main_menu, t
     await q.message.chat.send_message(t("welcome", new_lang), reply_markup=main_menu(new_lang))
 
