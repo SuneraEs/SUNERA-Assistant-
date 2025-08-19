@@ -1,0 +1,9 @@
+python-telegram-bot==20.8
+aiohttp==3.9.5
+gspread==6.2.1
+google-auth==2.21.0
+phonenumbers==8.13.35
+langdetect==1.0.9
+python-dotenv==1.0.1
+requests==2.32.4
+twilio==8.2.0
