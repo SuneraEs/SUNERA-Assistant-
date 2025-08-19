@@ -3,11 +3,12 @@ import asyncio
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 
 from config import TELEGRAM_BOT_TOKEN
-from handlers import (
-    cmd_start, cmd_id, cmd_admin, on_text,
-    form_conv_handler, credit_conv_handler,
-    solar_conv_handler, lang_handlers
-)
+# ===== ИСПРАВЛЕННЫЕ ИМПОРТЫ =====
+from handlers.start import cmd_start, cmd_id, cmd_admin, on_text
+from handlers.form import form_conv_handler
+from handlers.credit import credit_conv_handler
+from handlers.solar import solar_conv_handler
+from handlers.lang import lang_handlers
 
 # ======== НАСТРОЙКА ЛОГГИРОВАНИЯ ========
 logging.basicConfig(
