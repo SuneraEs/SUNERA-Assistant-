@@ -1,51 +1,54 @@
-# main.py
-import logging, asyncio
-from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters
-import config
-from utils.sheets import sheets
-from handlers import cmd_start, cmd_id, cmd_admin, on_text, form_conv_handler, credit_conv_handler, solar_conv_handler, lang_handlers
+import logging
+import asyncio
+from telegram.ext import Application, CommandHandler, MessageHandler, filters
 
-logging.basicConfig(format="%(asctime)s | %(name)s | %(levelname)s | %(message)s", level=logging.INFO)
+from config import TELEGRAM_BOT_TOKEN
+from handlers import (
+    cmd_start, cmd_id, cmd_admin, on_text,
+    form_conv_handler, credit_conv_handler,
+    solar_conv_handler, lang_handlers
+)
+
+# ======== НАСТРОЙКА ЛОГГИРОВАНИЯ ========
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO
+)
 log = logging.getLogger("sunera-bot")
 
-async def on_error(update, context):
-    log.exception("Update error", exc_info=context.error)
-    if config.ADMIN_CHAT_ID:
-        try:
-            await context.bot.send_message(config.ADMIN_CHAT_ID, f"⚠️ Error: {context.error}")
-        except Exception:
-            pass
-
+# ======== ТОЧКА ВХОДА ========
 async def main():
-    sheets.init()  # try init sheets (safe if not configured)
-    if not config.TELEGRAM_BOT_TOKEN or config.TELEGRAM_BOT_TOKEN.startswith("PASTE_"):
-        log.error("TELEGRAM_BOT_TOKEN not set correctly. Put token in ENV or config.")
+    """Запуск Telegram-бота"""
+
+    if not TELEGRAM_BOT_TOKEN:
+        log.error("❌ TELEGRAM_BOT_TOKEN не найден в переменных окружения!")
         return
 
-    app = Application.builder().token(config.TELEGRAM_BOT_TOKEN).build()
+    # создаём приложение
+    application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
-    # Commands
-    app.add_handler(CommandHandler("start", cmd_start))
-    app.add_handler(CommandHandler("id", cmd_id))
-    app.add_handler(CommandHandler("admin", cmd_admin))
-    # language handlers (callbacks + /lang)
-    for h in lang_handlers():
-        app.add_handler(h)
+    # команды
+    application.add_handler(CommandHandler("start", cmd_start))
+    application.add_handler(CommandHandler("id", cmd_id))
+    application.add_handler(CommandHandler("admin", cmd_admin))
 
-    # Conversation handlers
-    app.add_handler(form_conv_handler())
-    app.add_handler(credit_conv_handler())
-    app.add_handler(solar_conv_handler())
+    # текстовые сообщения
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
 
-    # catch-all text router
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
+    # разговорные сценарии
+    application.add_handler(form_conv_handler)
+    application.add_handler(credit_conv_handler)
+    application.add_handler(solar_conv_handler)
 
-    app.add_error_handler(on_error)
+    # языковые команды
+    for handler in lang_handlers:
+        application.add_handler(handler)
 
-    log.info("Bot started. Polling...")
-    await app.run_polling(drop_pending_updates=True)
+    log.info("🤖 Sunera Telegram Bot запущен и ждёт сообщения...")
+
+    await application.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
     import telegram
-    log.info(f"python-telegram-bot version: {telegram.__version__}")
+    log.info(f"Используется python-telegram-bot версии: {telegram.__version__}")
     asyncio.run(main())
