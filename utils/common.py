@@ -4,7 +4,6 @@ from typing import Tuple, Dict
 from telegram import ReplyKeyboardMarkup, KeyboardButton
 from .texts import TEXTS
 
-# simple per-user anti-flood cache
 _last_msgs: Dict[int, float] = {}
 
 def anti_flood_ok(user_id: int, window_sec: int) -> bool:
@@ -27,7 +26,7 @@ def pick_lang(lang_code: str) -> str:
 def t(key: str, lang: str) -> str:
     return TEXTS.get(key, {}).get(lang, TEXTS.get(key, {}).get("ru", ""))
 
-def main_menu(lang: str) -> ReplyKeyboardMarkup:
+def main_menu(lang: str):
     kb = [
         [KeyboardButton(t("menu_about", lang)), KeyboardButton(t("menu_services", lang))],
         [KeyboardButton(t("menu_form", lang))],
